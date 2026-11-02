@@ -471,7 +471,6 @@
             }
         };
 
-        // Cari workflow ID atau filename yang valid secara otomatis di repo
         sysLog("Detecting workflow configuration on repository...");
         let wfRes = await fetch(`https://api.github.com/repos/${user}/${repo}/actions/workflows`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -479,7 +478,6 @@
         if (!wfRes.ok) throw new Error("Gagal mengambil daftar workflow. Pastikan token memiliki akses actions:write.");
         let wfData = await wfRes.json();
         
-        // Cari workflow yang namanya mengandung 'NexaBuild' atau gunakan yang pertama
         let targetWorkflow = wfData.workflows.find(w => w.path.includes("NexaBuild") || w.name.includes("NexaBuild"));
         let workflowKey = targetWorkflow ? targetWorkflow.path.split('/').pop() : "NexaBuild-build-fixed.yml";
         sysLog(`Target workflow resolved: ${workflowKey}`);
