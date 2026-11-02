@@ -543,14 +543,9 @@
 
             if(run.status === "completed") {
                 clearInterval(activeInterval);
-                if(run.conclusion === "success") {
-                    sysLog("Build Success! Fetching artifact...", "ok");
-                    setIndicator('ok');
-                    fetchArtifact(user, repo, token, run.id, uploadId);
-                } else {
-                    sysLog(`Build Failed (${run.conclusion}). Check GitHub Actions logs.`, "err");
-                    resetUI();
-                }
+                sysLog(`Build completed with status: ${run.conclusion}. Checking for generated APK...`, "warn");
+                setIndicator('ok');
+                fetchArtifact(user, repo, token, run.id, uploadId);
             }
         } catch(e) {}
     }
