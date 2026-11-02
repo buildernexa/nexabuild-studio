@@ -177,18 +177,17 @@ jobs:
           npm init -y >/dev/null
           npm install --save-exact @capacitor/core@latest @capacitor/android@latest @capacitor/cli@latest
           
-          node --input-type=module << 'NODE'
-          import fs from 'node:fs';
-          const config = {
-            appId: process.env.PACKAGE_ID,
-            appName: process.env.APP_NAME,
-            webDir: 'www'
-          };
-          fs.writeFileSync('capacitor.config.ts', `import type { CapacitorConfig } from '@capacitor/cli';
-          const config: CapacitorConfig = ${JSON.stringify(config, null, 2)};
-          export default config;
-          `, 'utf8');
-          NODE
+          python3 - <<'PY'
+          import json, os
+          config = {
+              "appId": os.environ["PACKAGE_ID"],
+              "appName": os.environ["APP_NAME"],
+              "webDir": "www"
+          }
+          content = f"import type {{ CapacitorConfig }} from '@capacitor/cli';\nconst config: CapacitorConfig = {json.dumps(config, indent=2)};\nexport default config;\n"
+          with open("capacitor.config.ts", "w", encoding="utf-8") as f:
+              f.write(content)
+          PY
           
           npx cap add android
           npx cap sync android
@@ -212,28 +211,19 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/generate_android_icons.py" --android-dir "$APP_DIR/android" "${ICON_ARGS[@]}"
           echo "NEXABUILDER_APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-      - name: Build APK (Bulletproof Fallback Mode)
+      - name: Build APK
         shell: bash
         run: |
           set +e
           cd "$NEXABUILDER_APP_DIR/android"
           
-          # Coba build standar terlebih dahulu
-          ./gradlew --no-daemon assembleDebug -x test -x lint
+          ./gradlew --no-daemon assembleDebug -x test -x lint || true
           
-          # Jika gagal, buat ulang gradle wrapper dan paksa build
-          if [ $? -ne 0 ]; then
-            echo "Gradle build gagal, mencoba memperbaiki wrapper dan rebuild..."
-            gradle wrapper --gradle-version 8.5 || true
-            ./gradlew --no-daemon assembleDebug -x test -x lint --continue
-          fi
-          
-          # Cari file APK di semua kemungkinan direktori output
           apk="$(find . -name "app-debug.apk" | head -n 1)"
           
           if [[ -z "$apk" || ! -f "$apk" ]]; then
-            echo "Mencoba alternatif build dengan gradle clean..."
-            ./gradlew --no-daemon clean assembleDebug -x test -x lint --continue
+            echo "Mencoba ulang dengan clean build..."
+            ./gradlew --no-daemon clean assembleDebug -x test -x lint || true
             apk="$(find . -name "app-debug.apk" | head -n 1)"
           fi
           
@@ -244,7 +234,7 @@ jobs:
             sha256sum "$RUNNER_TEMP/nexabuilder-output/NexaBuild.apk" > "$RUNNER_TEMP/nexabuilder-output/SHA256SUMS.txt"
             exit 0
           else
-            echo "ERROR KRITIS: Gradle sama sekali tidak dapat memproduksi file APK." >&2
+            echo "Gagal: File APK tidak dapat ditemukan." >&2
             exit 1
           fi
 
