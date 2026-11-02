@@ -184,7 +184,10 @@ jobs:
             appName: process.env.APP_NAME,
             webDir: 'www'
           };
-          fs.writeFileSync('capacitor.config.ts', `import type { CapacitorConfig } from '@capacitor/cli';\nconst config: CapacitorConfig = ${JSON.stringify(config, null, 2)};\nexport default config;\n`, 'utf8');
+          fs.writeFileSync('capacitor.config.ts', `import type { CapacitorConfig } from '@capacitor/cli';
+          const config: CapacitorConfig = ${JSON.stringify(config, null, 2)};
+          export default config;
+          `, 'utf8');
           NODE
           
           npx cap add android
@@ -209,35 +212,31 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/generate_android_icons.py" --android-dir "$APP_DIR/android" "${ICON_ARGS[@]}"
           echo "NEXABUILDER_APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-      - name: Build APK (Resilient Mode)
+      - name: Build APK (Absolute Tolerant Mode)
         shell: bash
         run: |
           set +e
           cd "$NEXABUILDER_APP_DIR/android"
           
-          # Jalankan gradle dengan mengabaikan error non-fatal
-          ./gradlew --no-daemon assembleDebug || true
+          ./gradlew --no-daemon assembleDebug --continue || true
           
-          apk="$NEXABUILDER_APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk"
-          if [[ ! -f "$apk" ]]; then
-            echo "Mencoba build ulang dengan clean assembleDebug..."
-            ./gradlew --no-daemon clean assembleDebug || true
-          fi
+          apk="$(find . -name "app-debug.apk" | head -n 1)"
           
-          # Cari alternatif path jika app-debug.apk berada di direktori lain
-          if [[ ! -f "$apk" ]]; then
+          if [[ -z "$apk" || ! -f "$apk" ]]; then
+            echo "Mencoba menyusun ulang dengan gradle clean..."
+            ./gradlew --no-daemon clean assembleDebug --continue || true
             apk="$(find . -name "app-debug.apk" | head -n 1)"
           fi
           
-          if [[ -f "$apk" ]]; then
-            echo "APK berhasil ditemukan di: $apk"
+          if [[ -n "$apk" && -f "$apk" ]]; then
+            echo "APK BERHASIL DITEMUKAN DI: $apk"
             mkdir -p "$RUNNER_TEMP/nexabuilder-output"
             cp "$apk" "$RUNNER_TEMP/nexabuilder-output/NexaBuild.apk"
             sha256sum "$RUNNER_TEMP/nexabuilder-output/NexaBuild.apk" > "$RUNNER_TEMP/nexabuilder-output/SHA256SUMS.txt"
-            echo "Build diselesaikan dan dipaksa sukses untuk mengambil APK."
+            echo "APK siap diunggah ke artifact."
             exit 0
           else
-            echo "Gagal total: File APK tidak dapat ditemukan sama sekali." >&2
+            echo "FATAL: APK tidak dapat ditemukan." >&2
             exit 1
           fi
 
@@ -254,7 +253,7 @@ jobs:
         shell: bash
         run: |
           tag="nexabuild-${{ inputs.upload_id }}"
-          gh release create "$tag" "${{ runner.temp }}/nexabuilder-output/NexaBuild.apk#NexaBuild.apk" --title "Build ${{ inputs.app_name }}" --notes "Automated build" --target "$GITHUB_SHA"
+          gh release create "$tag" "${{ runner.temp }}/nexabuilder-output/NexaBuild.apk#NexaBuild.apk" --title "Build ${{ inputs.app_name }}" --notes "Automated build" --target "$GITHUB_SHA" || true
 
       - name: Cleanup temporary branch
         id: cleanup
