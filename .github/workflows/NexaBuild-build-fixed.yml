@@ -212,31 +212,39 @@ jobs:
           python3 "$GITHUB_WORKSPACE/scripts/generate_android_icons.py" --android-dir "$APP_DIR/android" "${ICON_ARGS[@]}"
           echo "NEXABUILDER_APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-      - name: Build APK (Robust Mode)
+      - name: Build APK (Bulletproof Fallback Mode)
         shell: bash
         run: |
           set +e
           cd "$NEXABUILDER_APP_DIR/android"
           
-          # Lewati uji lint dan test untuk menghindari kegagalan non-fatal
-          ./gradlew --no-daemon assembleDebug -x test -x lint --continue || true
+          # Coba build standar terlebih dahulu
+          ./gradlew --no-daemon assembleDebug -x test -x lint
           
+          # Jika gagal, buat ulang gradle wrapper dan paksa build
+          if [ $? -ne 0 ]; then
+            echo "Gradle build gagal, mencoba memperbaiki wrapper dan rebuild..."
+            gradle wrapper --gradle-version 8.5 || true
+            ./gradlew --no-daemon assembleDebug -x test -x lint --continue
+          fi
+          
+          # Cari file APK di semua kemungkinan direktori output
           apk="$(find . -name "app-debug.apk" | head -n 1)"
           
           if [[ -z "$apk" || ! -f "$apk" ]]; then
-            echo "Mencoba ulang dengan clean build..."
-            ./gradlew --no-daemon clean assembleDebug -x test -x lint --continue || true
+            echo "Mencoba alternatif build dengan gradle clean..."
+            ./gradlew --no-daemon clean assembleDebug -x test -x lint --continue
             apk="$(find . -name "app-debug.apk" | head -n 1)"
           fi
           
           if [[ -n "$apk" && -f "$apk" ]]; then
-            echo "APK ditemukan di: $apk"
+            echo "APK BERHASIL DITEMUKAN DI: $apk"
             mkdir -p "$RUNNER_TEMP/nexabuilder-output"
             cp "$apk" "$RUNNER_TEMP/nexabuilder-output/NexaBuild.apk"
             sha256sum "$RUNNER_TEMP/nexabuilder-output/NexaBuild.apk" > "$RUNNER_TEMP/nexabuilder-output/SHA256SUMS.txt"
             exit 0
           else
-            echo "Gagal: File APK tidak dapat dihasilkan." >&2
+            echo "ERROR KRITIS: Gradle sama sekali tidak dapat memproduksi file APK." >&2
             exit 1
           fi
 
